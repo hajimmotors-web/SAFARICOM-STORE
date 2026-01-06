@@ -1,0 +1,109 @@
+mpesa-api/
+├── index.js
+├── package.json
+├── .gitignore
+{
+  "name": "mpesa-api",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-fetch": "^3.3.2"
+  }
+}.env
+import express from "express";
+import fetch from "node-fetch";
+
+const app = express();
+app.use(express.json());
+
+// 🔐 Generate Timestamp
+const getTimestamp = () => {
+  const now = new Date();
+  return now
+    .toISOString()
+    .replace(/[-T:.Z]/g, "")
+    .slice(0, 14);
+};
+
+// 🔐 Generate Password
+const getPassword = (shortCode, passKey, timestamp) => {
+  return Buffer.from(shortCode + passKey + timestamp).toString("base64");
+};
+
+const getAccessToken = async () => {
+  const auth = Buffer.from(
+    process.env.CONSUMER_KEY + ":" + process.env.CONSUMER_SECRET
+  ).toString("base64");
+
+  const response = await fetch(process.env.MPESA_AUTH_URL, {
+    method: "GET",
+    headers: {
+      "Authorization": `Basic ${auth}`
+    }
+  });
+
+  const data = await response.json();
+  return data.access_token;
+};
+
+// 🚀 STK Push Endpoint
+app.post("/stk-push", async (req, res) => {
+  try {
+    const timestamp = getTimestamp();
+    const password = getPassword(
+      process.env.BUSINESS_SHORT_CODE,
+      process.env.PASSKEY,
+      timestamp
+    );
+
+    const accessToken = await getAccessToken();
+
+    const payload = {
+      BusinessShortCode: process.env.BUSINESS_SHORT_CODE,
+      Password: password,
+      Timestamp: timestamp,
+      TransactionType: "CustomerBuyGoodsOnline",
+      Amount: "200",
+      PartyA: process.env.PHONE_NUMBER,
+      PartyB: process.env.PARTY_B,
+      PhoneNumber: process.env.PHONE_NUMBER,
+      CallBackURL: `${process.env.BASE_URL}/callback`,
+      AccountReference: "Test",
+      TransactionDesc: "Test"
+    };
+
+    const response = await fetch(process.env.MPESA_STK_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    res.json(data);
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 📞 Callback URL
+app.post("/callback", (req, res) => {
+  console.log("MPESA CALLBACK:", JSON.stringify(req.body, null, 2));
+  res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log("API running on port", PORT));
+git init
+git add .
+git commit -m "Mpesa STK Push API"
+git branch -M main
+git remote add origin https://github.com/yourusername/mpesa-api.git
+git push -u origin main
